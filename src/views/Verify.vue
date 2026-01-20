@@ -1,0 +1,218 @@
+<script setup>
+import { ref, onMounted, onUnmounted } from "vue"
+import { useRouter } from "vue-router"
+import { sendEmailVerification, verifyBeforeUpdateEmail } from "firebase/auth"
+import { auth } from "@/firebase"
+
+const router = useRouter()
+
+const user = ref(null)
+const newEmail = ref("")
+const loading = ref(false)
+const message = ref("")
+const error = ref("")
+const canResend = ref(true)
+
+let intervalId = null
+
+onMounted(() => {
+  user.value = auth.currentUser
+
+  if (!user.value) {
+    router.replace("/auth")
+    return
+  }
+
+  // Auto-check verification status
+  intervalId = setInterval(async () => {
+    await user.value.reload()
+    if (user.value.emailVerified) {
+      clearInterval(intervalId)
+      router.replace("/writehere")
+    }
+  }, 4000)
+})
+
+onUnmounted(() => {
+  if (intervalId) clearInterval(intervalId)
+})
+
+const resendVerification = async () => {
+  if (!user.value || !canResend.value) return
+
+  loading.value = true
+  message.value = ""
+  error.value = ""
+
+  try {
+    await sendEmailVerification(user.value)
+    message.value = "Verification email sent."
+    canResend.value = false
+    setTimeout(() => (canResend.value = true), 60000)
+  } catch {
+    error.value = "Please wait before requesting again."
+  } finally {
+    loading.value = false
+  }
+}
+
+const changeEmailAndResend = async () => {
+  if (!newEmail.value || !user.value) return
+
+  loading.value = true
+  message.value = ""
+  error.value = ""
+
+  try {
+    await verifyBeforeUpdateEmail(user.value, newEmail.value)
+    message.value = "Verification sent to the new email."
+    canResend.value = false
+    setTimeout(() => (canResend.value = true), 60000)
+  } catch {
+    error.value = "Please log in again to change your email."
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="page">
+    <div class="card">
+      <h1 class="brand">Inkridible</h1>
+      <p class="subtitle">Verify your email to continue</p>
+
+      <p class="email">{{ user?.email }}</p>
+
+      <input
+        v-model="newEmail"
+        type="email"
+        placeholder="Change email (optional)"
+      />
+
+      <button
+        class="primary"
+        :disabled="loading"
+        @click="changeEmailAndResend"
+      >
+        Change email & resend
+      </button>
+
+      <button
+        class="secondary"
+        :disabled="loading || !canResend"
+        @click="resendVerification"
+      >
+        Resend verification email
+      </button>
+
+      <p v-if="message" class="success">{{ message }}</p>
+      <p v-if="error" class="error">{{ error }}</p>
+
+      <p class="hint">
+        The page will redirect once verified.
+      </p>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #cce7ff, #e9d6ff); /* soft pastel gradient */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2.6rem;
+  border-radius: 22px;
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.15);
+  color: #222;
+  text-align: center;
+}
+
+.brand {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  color: #222;
+}
+
+.subtitle {
+  color: #555;
+  margin-bottom: 1.6rem;
+  font-size: 1.1rem;
+}
+
+.email {
+  font-size: 0.95rem;
+  color: #4fc3f7;
+  margin-bottom: 1.4rem;
+  word-break: break-all;
+}
+
+input {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #222;
+}
+
+input:focus {
+  outline: none;
+  border-color: #4fc3f7;
+  box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.25);
+}
+
+button {
+  width: 100%;
+  padding: 0.8rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.primary {
+  background: #4fc3f7;
+  color: #222;
+  margin-bottom: 0.75rem;
+}
+
+.secondary {
+  background: transparent;
+  border: 1px solid #4fc3f7;
+  color: #4fc3f7;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.success {
+  color: #4fc3f7;
+  margin-top: 1rem;
+}
+
+.error {
+  color: #f87171;
+  margin-top: 1rem;
+}
+
+.hint {
+  margin-top: 1.4rem;
+  font-size: 0.85rem;
+  color: #555;
+}
+</style>
